@@ -1,0 +1,468 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import UserLayout from '@/components/layout/UserLayout';
+import Button from '@/components/common/Button';
+import Badge from '@/components/common/Badge';
+import Modal from '@/components/common/Modal';
+import Input from '@/components/common/Input';
+import Loader from '@/components/common/Loader';
+import { canchasService } from '../services/canchasService';
+import { ubicacionesService } from '@/features/ubicaciones/services/ubicacionesService';
+import { reservasService } from '@/features/reservas/services/reservasService';
+import { useAuth } from '@/context/AuthContext';
+import { useApp } from '@/context/AppContext';
+import { formatCurrency } from '@/utils/formatters';
+import PasarelaPagoModal from '@/components/payment/PasarelaPagoModal';
+import api from '@/services/api';
+
+// Fotos distintas de canchas 
+const TEJO_IMAGES = [
+  'https://bogotivo.com/wp-content/uploads/2021/02/Tejo-Bogota.jpg',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRtsCz77wJ422djYWimCgreSll0YD40VyumJIxGXpu0vhq4y38HmeRMLN6V&s=10',
+  'https://taxiimperial.com.co/images/blog/tejo-en-bogota/tejo-turmeque.webp',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlxv5cQY6aOHZLkCQMf5H2-hwZHFE1J86DY2etkDVX2FILnObFxjlwaSrv&s=10',
+  'https://www.instagram.com/p/CrCq_0nMvBJ/',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTNWyNWj3EiruJg5rDf0YDW7iwdVNOfovETi9jdJ5UGFODSKmx2BlAqpXpZ&s=10',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScDuKb8Ur8qbFGeFnIb5ghf3tLZW420g8Jp0dEO2zigP0h42vb-vVjd48&s=10',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSt6q8NDqB9TdZh7asRm7R6WbF1htbaTpDrh0AT5Jrh2VzCGLEPY5fJfrU&s=10',
+  'https://s3.amazonaws.com/rtvc-assets-misenal.tv/ms-public/imagenes/COVER-TEJO.png',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbg91huLOTkbUMEvPx7-r-_RTlyjrzyXJPNhN2nRjQ0F8cXFO4Ib_w9YOZ&s=10',
+];
+
+function getTejoImage(id) {
+  return TEJO_IMAGES[(id - 1) % TEJO_IMAGES.length];
+}
+
+export default function CanchasUserPage() {
+  const navigate = useNavigate();
+  const [canchas, setCanchas] = useState([]);
+  const [ubicaciones, setUbicaciones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCancha, setSelectedCancha] = useState(null);
+  
+  // Modals state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  
+  // Forms state
+  const [reservaPendiente, setReservaPendiente] = useState(null);
+  const [ocupados, setOcupados] = useState([]);
+  const [buscandoDisponibilidad, setBuscandoDisponibilidad] = useState(false);
+  const [estrellasCanchas, setEstrellasCanchas] = useState({});
+
+  const { user } = useAuth();
+  const { showSuccess, showError, triggerMechaExplosion } = useApp();
+
+  const [reservaForm, setReservaForm] = useState({
+    fecha: new Date().toISOString().split('T')[0],
+    hora_inicio: '18:00',
+    hora_fin: '20:00',
+  });
+
+  const [tarjetaForm, setTarjetaForm] = useState({
+    numero: '',
+    nombre: '',
+    vencimiento: '',
+    cvc: '',
+  });
+
+  const [filtroCiudad, setFiltroCiudad] = useState('todas');
+  const [busqueda, setBusqueda] = useState('');
+  const [loadingLocation, setLoadingLocation] = useState(false);
+
+  const cargarDatos = async () => {
+    try {
+      setLoading(true);
+      const [canchasData, ubicacionesData] = await Promise.all([
+        canchasService.listar(),
+        ubicacionesService.listar(),
+      ]);
+      setCanchas(canchasData);
+      setUbicaciones(ubicacionesData);
+
+      // Cargar valoraciones en paralelo (evita N+1 secuencial)
+      const valoracionesResults = await Promise.all(
+        canchasData.map(c =>
+          canchasService.obtenerValoraciones(c.id_cancha).catch(() => null)
+        )
+      );
+      const estrellas = {};
+      canchasData.forEach((c, i) => {
+        if (valoracionesResults[i] !== null) {
+          estrellas[c.id_cancha] = valoracionesResults[i];
+        }
+      });
+      setEstrellasCanchas(estrellas);
+      
+    } catch {
+      showError('Error cargando canchas.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleObtenerMiUbicacion = () => {
+    if (!navigator.geolocation) {
+      showError('Tu navegador no soporta geolocalización.');
+      return;
+    }
+    setLoadingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setLoadingLocation(false);
+        showSuccess('¡Ubicación detectada! Mostrando canchas disponibles.');
+      },
+      () => {
+        setLoadingLocation(false);
+        showError('No se pudo obtener tu ubicación. Verifica los permisos.');
+      }
+    );
+  };
+
+  const ciudadesDisponibles = Array.from(
+    new Set(ubicaciones.map((u) => u.ciudad).filter(Boolean))
+  );
+
+  const canchasFiltradas = canchas.filter((cancha) => {
+    const ubicacion = ubicaciones.find((u) => u.id_ubicacion === cancha.id_ubicacion);
+    const cumpleCiudad = filtroCiudad === 'todas' || ubicacion?.ciudad === filtroCiudad;
+    const cumpleBusqueda =
+      !busqueda.trim() ||
+      (cancha.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ubicacion?.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ubicacion?.ciudad || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ubicacion?.barrio || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ubicacion?.direccion || '').toLowerCase().includes(busqueda.toLowerCase());
+    return cumpleCiudad && cumpleBusqueda;
+  });
+
+  const abrirEnGoogleMaps = (ubicacion, canchaNombre) => {
+    const query = encodeURIComponent(
+      `${canchaNombre}, ${ubicacion?.direccion || ''}, ${ubicacion?.ciudad || ''}, Colombia`
+    );
+    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+  };
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  useEffect(() => {
+    if (selectedCancha && reservaForm.fecha) {
+      const fetchDisponibilidad = async () => {
+        try {
+          setBuscandoDisponibilidad(true);
+          const data = await canchasService.consultarDisponibilidad(selectedCancha.id_cancha, reservaForm.fecha);
+          setOcupados(data.horarios_ocupados || []);
+        } catch (error) {
+          console.error(error);
+          setOcupados([]);
+        } finally {
+          setBuscandoDisponibilidad(false);
+        }
+      };
+      fetchDisponibilidad();
+    }
+  }, [selectedCancha, reservaForm.fecha]);
+
+  const handleOpenReservar = (cancha) => {
+    setSelectedCancha(cancha);
+    setReservaForm({
+      fecha: new Date().toISOString().split('T')[0],
+      hora_inicio: '18:00',
+      hora_fin: '20:00',
+    });
+    setOcupados([]);
+    setIsModalOpen(true);
+  };
+
+  const calcularHorasYValor = () => {
+    if (!reservaForm.hora_inicio || !reservaForm.hora_fin || !selectedCancha) {
+      return { horas: 2, valor: Number(selectedCancha?.precio_hora || 35000) * 2 };
+    }
+    const [hI, mI] = reservaForm.hora_inicio.split(':').map(Number);
+    const [hF, mF] = reservaForm.hora_fin.split(':').map(Number);
+    const diff = (hF + mF / 60) - (hI + mI / 60);
+    const horas = diff > 0 ? Number(diff.toFixed(1)) : 1;
+    const valor = Math.round(horas * Number(selectedCancha.precio_hora || 35000));
+    return { horas, valor };
+  };
+
+  const handleCrearReservaPendiente = async (e) => {
+    e.preventDefault();
+    try {
+      const { horas, valor } = calcularHorasYValor();
+      if (reservaForm.hora_fin <= reservaForm.hora_inicio) {
+        showError('La hora de finalización debe ser posterior a la de inicio.');
+        return;
+      }
+      const payload = {
+        id_usuario: user?.id_usuario || 2,
+        id_cancha: selectedCancha.id_cancha,
+        fecha: reservaForm.fecha,
+        hora_inicio: reservaForm.hora_inicio.length === 5 ? reservaForm.hora_inicio + ':00' : reservaForm.hora_inicio,
+        hora_fin: reservaForm.hora_fin.length === 5 ? reservaForm.hora_fin + ':00' : reservaForm.hora_fin,
+        valor: valor,
+        estado: 'Pendiente Pago',
+      };
+
+      const nuevaReserva = await reservasService.crear(payload);
+      setReservaPendiente(nuevaReserva);
+      setIsModalOpen(false);
+      setIsPaymentOpen(true);
+    } catch (err) {
+      showError(err.message || 'No se pudo generar la reserva. Verifica disponibilidad.');
+    }
+  };
+
+  const handlePagoExitoso = () => {
+    triggerMechaExplosion({
+      title: '¡¡MECHAAAAA!! ',
+      subtitle: `¡Reserva confirmada en ${selectedCancha?.nombre || 'la cancha'}! Pista lista para el partido.`,
+      badgeText: '¡RESERVA CONFIRMADA!',
+    });
+    showSuccess(`¡Pago confirmado exitosamente! Tu reserva en ${selectedCancha?.nombre} está activa.`);
+    cargarDatos();
+  };
+
+  return (
+    <UserLayout
+      title="Canchas y Escenarios de Tejo"
+      subtitle="Explora las pistas disponibles, consulta disponibilidad y reseñas."
+    >
+      {/* Barra de Filtros de Ubicación y Búsqueda */}
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          padding: '16px 20px',
+          borderRadius: 'var(--radius-lg)',
+          marginBottom: '24px',
+          border: '1px solid var(--border-color)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '12px',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
+          <input
+            type="text"
+            placeholder="Buscar por cancha, ciudad, barrio o dirección..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-color)',
+              minWidth: '240px',
+              flex: 1,
+            }}
+          />
+
+          <select
+            value={filtroCiudad}
+            onChange={(e) => setFiltroCiudad(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-color)',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="todas">Todas las Ciudades</option>
+            {ciudadesDisponibles.map((ciudad) => (
+              <option key={ciudad} value={ciudad}>
+                {ciudad}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <Button
+          variant="secondary"
+          onClick={handleObtenerMiUbicacion}
+          disabled={loadingLocation}
+        >
+          {loadingLocation ? 'Localizando...' : 'Cerca de Mí'}
+        </Button>
+      </div>
+
+      {loading ? (
+        <Loader message="Buscando canchas aliadas..." />
+      ) : canchasFiltradas.length === 0 ? (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '40px',
+            background: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-lg)',
+          }}
+        >
+          <h3>No se encontraron canchas</h3>
+          <p style={{ color: 'var(--text-muted)' }}>
+            Prueba ajustando los filtros de búsqueda o seleccionando otra ciudad.
+          </p>
+        </div>
+      ) : (
+        <div className="services-grid">
+          {canchasFiltradas.map((cancha) => {
+            const ubicacion = ubicaciones.find((u) => u.id_ubicacion === cancha.id_ubicacion);
+            const rating = estrellasCanchas[cancha.id_cancha];
+            
+            return (
+              <article key={cancha.id_cancha} className="service-card">
+                <img
+                  src={getTejoImage(cancha.id_cancha)}
+                  alt={`Cancha de tejo: ${cancha.nombre}`}
+                  className="service-card-img"
+                  onError={(e) => { e.target.src = 'https://s3.amazonaws.com/rtvc-assets-senalmemoria.gov.co/s3fs-public/field_image/tejo.jpg'; }}
+                />
+                <div className="service-card-body">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <Badge variant={cancha.estado ? 'success' : 'danger'}>
+                      {cancha.estado ? 'Disponible' : 'Ocupado'}
+                    </Badge>
+                    <span style={{ fontSize: '0.9rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                      {rating?.promedio > 0 ? rating.promedio : 'Nuevo'} <span style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>({rating?.total || 0})</span>
+                    </span>
+                  </div>
+
+                  <h3>{cancha.nombre}</h3>
+                  <p style={{ fontSize: '0.88rem', minHeight: '44px' }}>
+                    {cancha.descripcion}
+                  </p>
+
+                  <div
+                    style={{
+                      background: 'var(--bg-surface)',
+                      padding: '12px',
+                      borderRadius: 'var(--radius-md)',
+                      margin: '16px 0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div>
+                      <small style={{ color: 'var(--text-dim)', display: 'block' }}>Tarifa</small>
+                      <strong>{formatCurrency(cancha.precio_hora)} / hr</strong>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <small style={{ color: 'var(--text-dim)', display: 'block' }}>Capacidad</small>
+                      <strong>{cancha.capacidad} jugadores</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                    <div><strong>{ubicacion?.nombre || 'Sede Principal'}</strong></div>
+                    <div>{ubicacion?.direccion || 'Dirección no registrada'} - {ubicacion?.ciudad || 'Colombia'} ({ubicacion?.barrio || 'Centro'})</div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button
+                      variant="outline"
+                      style={{ flex: 1 }}
+                      onClick={() => abrirEnGoogleMaps(ubicacion, cancha.nombre)}
+                    >
+                      Mapa
+                    </Button>
+                    <Button
+                      variant="primary"
+                      style={{ flex: 2 }}
+                      onClick={() => handleOpenReservar(cancha)}
+                      disabled={!cancha.estado}
+                    >
+                      Reservar Cancha
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal 1: Crear Reserva */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={`Reservar en ${selectedCancha?.nombre}`}
+      >
+        <form onSubmit={handleCrearReservaPendiente}>
+          <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>
+              Tarifa por hora: <strong>{formatCurrency(selectedCancha?.precio_hora)}</strong>
+            </p>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>
+              Duración: {calcularHorasYValor().horas}h · Total: {formatCurrency(calcularHorasYValor().valor)}
+            </p>
+          </div>
+
+          <Input
+            label="Fecha de la Reserva"
+            type="date"
+            value={reservaForm.fecha}
+            onChange={(e) => setReservaForm({ ...reservaForm, fecha: e.target.value })}
+            required
+          />
+
+          {buscandoDisponibilidad ? (
+            <p style={{ fontSize: '0.85rem', color: 'var(--primary)' }}>Buscando disponibilidad...</p>
+          ) : ocupados.length > 0 ? (
+            <div style={{ marginBottom: '16px', padding: '10px', background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)', borderRadius: '4px' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-danger)', fontWeight: 'bold' }}>Horarios ocupados este día:</p>
+              <ul style={{ margin: '5px 0 0 20px', fontSize: '0.85rem', color: 'var(--color-danger)' }}>
+                {ocupados.map((oc, i) => (
+                  <li key={i}>{oc.hora_inicio} a {oc.hora_fin}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-success)', marginBottom: '16px' }}>Disponibilidad completa.</p>
+          )}
+
+          <div className="form-grid-2">
+            <Input
+              label="Hora de Inicio"
+              type="time"
+              value={reservaForm.hora_inicio}
+              onChange={(e) => setReservaForm({ ...reservaForm, hora_inicio: e.target.value })}
+              required
+            />
+            <Input
+              label="Hora de Fin"
+              type="time"
+              value={reservaForm.hora_fin}
+              onChange={(e) => setReservaForm({ ...reservaForm, hora_fin: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="modal-footer">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" variant="primary">Continuar al Pago</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Pasarela de Pagos Simulada */}
+      <PasarelaPagoModal
+        isOpen={isPaymentOpen}
+        onClose={() => {
+          setIsPaymentOpen(false);
+          if (reservaPendiente) {
+            navigate('/user/mis-reservas');
+          }
+        }}
+        monto={reservaPendiente?.valor || 0}
+        concepto={`Alquiler de Cancha: ${selectedCancha?.nombre || 'Pista de Tejo'} (${reservaForm.fecha})`}
+        metadata={{ id_reserva: reservaPendiente?.id_reserva }}
+        onSuccess={handlePagoExitoso}
+      />
+    </UserLayout>
+  );
+}

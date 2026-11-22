@@ -1,0 +1,108 @@
+:root {
+  /* Paleta Oficial MechApp Prémium */
+  --primary: #ff5722;
+  --primary-hover: #ff6e40;
+  --primary-active: #e64a19;
+  --primary-light: rgba(255, 87, 34, 0.12);
+  --primary-glow: rgba(255, 87, 34, 0.4);
+  --primary-gradient: linear-gradient(135deg, #ff5722 0%, #ff8a65 100%);
+  --fire-gradient: linear-gradient(135deg, #ff3d00 0%, #ff9100 100%);
+
+  --secondary: #ff9800;
+  --secondary-hover: #ffa726;
+  --secondary-gradient: linear-gradient(135deg, #ff9800 0%, #ffb74d 100%);
+
+  /* Fondos del Modo Oscuro Hyper-Profesional */
+  --bg-main: #0a0d16;
+  --bg-surface: #111625;
+  --bg-card: #161d30;
+  --bg-card-hover: #1c253d;
+  --bg-input: #1a2238;
+  --bg-sidebar: #0e1220;
+  --bg-modal: #151b2e;
+  --bg-glass: rgba(22, 29, 48, 0.75);
+
+  /* Textos */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  /* Estados con colores vivos y profesionales */
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.12);
+  --color-success-border: rgba(16, 185, 129, 0.3);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-border: rgba(245, 158, 11, 0.3);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-danger-border: rgba(239, 68, 68, 0.3);
+  --color-info: #3b82f6;
+  --color-info-bg: rgba(59, 130, 246, 0.12);
+  --color-info-border: rgba(59, 130, 246, 0.3);
+
+  /* Bordes y Sombras de Alta Definición */
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-focus: rgba(255, 87, 34, 0.6);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px -8px rgba(0, 0, 0, 0.65);
+  --shadow-primary: 0 6px 20px -2px rgba(255, 87, 34, 0.35);
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* Tipografías */
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Poppins', system-ui, -apple-system, sans-serif;
+
+  /* Radio de bordes suaves y modernos */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Transición fluida */
+  --transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root.light-mode {
+  /* Fondos claros profesionales */
+  --bg-main: #f4f6f9;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0f2f5;
+  --bg-input: #f0f2f5;
+  --bg-sidebar: #ffffff;
+  --bg-modal: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
+
+  /* Textos oscuros para buena legibilidad */
+  --text-main: #1a1d26;
+  --text-muted: #4a5165;
+  --text-dim: #7a8099;
+  --text-color: #1a1d26;
+
+  /* Bordes y sombras para modo claro */
+  --border-color: rgba(0, 0, 0, 0.12);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-focus: rgba(255, 87, 34, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-primary: 0 4px 14px rgba(255, 87, 34, 0.2);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.1);
+
+  /* Primary ajustes para claro */
+  --primary-light: rgba(255, 87, 34, 0.08);
+  --primary-glow: rgba(255, 87, 34, 0.25);
+
+  /* Estados con fondo mas visible en claro */
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+  --color-success-border: rgba(16, 185, 129, 0.25);
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+  --color-warning-border: rgba(245, 158, 11, 0.25);
+  --color-danger-bg: rgba(239, 68, 68, 0.1);
+  --color-danger-border: rgba(239, 68, 68, 0.25);
+  --color-info-bg: rgba(59, 130, 246, 0.1);
+  --color-info-border: rgba(59, 130, 246, 0.25);
+}
